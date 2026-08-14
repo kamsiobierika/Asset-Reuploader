@@ -87,6 +87,7 @@ func Reupload(ctx *context.Context, r *request.Request) {
 	permissionRequest := assetutils.NewPermissionBodyFromIds([]int64{r.UniverseID})
 
 	logger.Println("Reuploading sounds...")
+	color.Info.Println(fmt.Sprintf("Processing %d sound IDs", idsToUpload))
 
 	newBatchError := func(amt int, m string, err any) {
 		end := int(idsProcessed.Add(int32(amt)))
