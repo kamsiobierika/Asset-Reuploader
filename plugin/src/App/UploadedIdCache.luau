@@ -1,24 +1,25 @@
 --!strict
 local HttpService = game:GetService("HttpService")
-local FileSystemService = game:GetService("FileSystemService")
 
 local UploadedIdCache = {}
 
-local function getCacheFilePath(assetType: string): string
-	return `uploaded_ids_{assetType}.json`
+local plugin: Plugin = plugin
+
+local function getCacheKey(assetType: string): string
+	return `uploaded_ids_{assetType}`
 end
 
 -- Load previously uploaded IDs for an asset type
 function UploadedIdCache.load(assetType: string): { [number]: boolean }
-	local filePath = getCacheFilePath(assetType)
+	local cacheKey = getCacheKey(assetType)
+	local cached = plugin:GetSetting(cacheKey)
 	
-	local success, content = pcall(FileSystemService.ReadFile, FileSystemService, filePath)
-	if not success or not content then
+	if not cached then
 		return {}
 	end
 	
-	local decoded = pcall(HttpService.JSONDecode, HttpService, content)
-	if not decoded then
+	local success, decoded = pcall(HttpService.JSONDecode, HttpService, cached)
+	if not success or not decoded then
 		return {}
 	end
 	
@@ -33,15 +34,13 @@ end
 
 -- Save uploaded IDs for an asset type
 function UploadedIdCache.save(assetType: string, ids: { number }): boolean
-	local filePath = getCacheFilePath(assetType)
-	
-	-- Load existing IDs
-	local success, content = pcall(FileSystemService.ReadFile, FileSystemService, filePath)
+	local cacheKey = getCacheKey(assetType)
+	local cached = plugin:GetSetting(cacheKey)
 	local existingIds: { number } = {}
 	
-	if success and content then
-		local decoded = pcall(HttpService.JSONDecode, HttpService, content)
-		if decoded then
+	if cached then
+		local success, decoded = pcall(HttpService.JSONDecode, HttpService, cached)
+		if success and decoded then
 			existingIds = (decoded :: any) or {}
 		end
 	end
@@ -65,11 +64,11 @@ function UploadedIdCache.save(assetType: string, ids: { number }): boolean
 	
 	table.sort(allIds)
 	
-	-- Write back to file
+	-- Write back to settings
 	local encoded = HttpService:JSONEncode(allIds)
-	success = pcall(FileSystemService.WriteFile, FileSystemService, filePath, encoded)
+	plugin:SetSetting(cacheKey, encoded)
 	
-	return success
+	return true
 end
 
 -- Get the IDs that haven't been uploaded yet
@@ -88,9 +87,10 @@ end
 
 -- Clear the cache for an asset type
 function UploadedIdCache.clear(assetType: string): boolean
-	local filePath = getCacheFilePath(assetType)
-	local success = pcall(FileSystemService.RemoveFile, FileSystemService, filePath)
-	return success
+	local cacheKey = getCacheKey(assetType)
+	plugin:SetSetting(cacheKey, nil)
+	return true
 end
 
 return UploadedIdCache
+
