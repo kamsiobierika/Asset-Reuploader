@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/kartFr/Asset-Reuploader/internal/app/assets"
@@ -22,23 +23,82 @@ func getOutputFileName(reuploadType string) string {
 	return fmt.Sprintf("Output_%s_%s.json", reuploadType, t.Format("2006-01-02_15-04-05"))
 }
 
+type serveState struct {
+	mu       sync.Mutex
+	busy     bool
+	finished bool
+	doneSent bool
+	exportJSON bool
+}
+
+func (s *serveState) startReupload() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.busy || !s.finished {
+		return false
+	}
+
+	s.busy = true
+	s.finished = false
+	s.doneSent = false
+	s.exportJSON = false
+	return true
+}
+
+func (s *serveState) finishReupload() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.busy = false
+	s.finished = true
+	s.doneSent = false
+}
+
+func (s *serveState) canEmitResults(responseLen int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return responseLen > 0 && !s.busy && !s.finished
+}
+
+func (s *serveState) canEmitDone(responseLen int) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return responseLen == 0 && !s.busy && s.finished && !s.doneSent
+}
+
+func (s *serveState) markDoneSent() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.doneSent = true
+	s.exportJSON = false
+}
+
+func (s *serveState) setExportJSON(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.exportJSON = enabled
+}
+
+func (s *serveState) exportEnabled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exportJSON
+}
+
 func shouldEmitResults(responseLen int, busy bool, finished bool) bool {
 	return responseLen > 0 && !busy && !finished
 }
 
-func shouldEmitDone(responseLen int, busy bool, finished bool) bool {
-	return responseLen == 0 && !busy && finished
+func shouldEmitDone(responseLen int, busy bool, finished bool, doneSent bool) bool {
+	return responseLen == 0 && !busy && finished && !doneSent
 }
 
 func serve(c *roblox.Client) error {
 	var exportedJSONName string
-	var exportJSON bool
-	var busy bool
-	finished := true
+	state := &serveState{finished: true}
 
 	respHistory := make([]response.ResponseItem, 0)
 	resp := response.New(func(i response.ResponseItem) {
-		if exportJSON {
+		if state.exportEnabled() {
 			respHistory = append(respHistory, i)
 
 			j, err := json.Marshal(respHistory)
@@ -55,6 +115,15 @@ func serve(c *roblox.Client) error {
 	http.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 
+		busy := false
+		finished := true
+		doneSent := false
+		state.mu.Lock()
+		busy = state.busy
+		finished = state.finished
+		doneSent = state.doneSent
+		state.mu.Unlock()
+
 		if shouldEmitResults(resp.Len(), busy, finished) {
 			if err := resp.EncodeJSON(json.NewEncoder(w)); err != nil {
 				log.Fatal(err)
@@ -64,9 +133,8 @@ func serve(c *roblox.Client) error {
 			return
 		}
 
-		if shouldEmitDone(resp.Len(), busy, finished) {
-			finished = false
-			exportJSON = false
+		if shouldEmitDone(resp.Len(), busy, finished, doneSent) {
+			state.markDoneSent()
 			resp.Clear()
 			respHistory = make([]response.ResponseItem, 0)
 
@@ -77,48 +145,51 @@ func serve(c *roblox.Client) error {
 	})
 
 	http.HandleFunc("POST /reupload", func(w http.ResponseWriter, r *http.Request) {
-		if busy || !finished {
+		if !state.startReupload() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
 
 		var req request.RawRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			state.finishReupload()
 			color.Error.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
 		if CompatiblePluginVersion != "" && req.PluginVersion != CompatiblePluginVersion {
+			state.finishReupload()
 			w.WriteHeader(http.StatusConflict)
 			return
 		}
 
 		if exists := assets.DoesModuleExist(req.AssetType); !exists {
+			state.finishReupload()
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
 		startReupload, err := assets.NewReuploadHandlerWithType(req.AssetType, c, &req, resp)
 		if err != nil {
+			state.finishReupload()
 			color.Error.Println(err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 
-		if exportJSON = req.ExportJSON; exportJSON {
+		if req.ExportJSON {
+			state.setExportJSON(true)
 			exportedJSONName = getOutputFileName(req.AssetType)
+		} else {
+			state.setExportJSON(false)
 		}
-
-		busy = true
-		finished = false
 
 		go func() {
 			start := time.Now()
 			err := startReupload()
-			busy = false
+			state.finishReupload()
 			if err != nil {
-				finished = true
 				color.Error.Println("Failed to start reuploading: ", err)
 				return
 			}
@@ -126,7 +197,6 @@ func serve(c *roblox.Client) error {
 			duration := time.Since(start)
 			fmt.Printf("Reuploading took %d hours, %d minutes, and %d seconds\n", int(duration.Hours()), int(duration.Minutes())%60, int(duration.Seconds())%60)
 			fmt.Println("Waiting for client to finish changing ids...")
-			finished = true
 		}()
 
 		w.WriteHeader(http.StatusOK)
