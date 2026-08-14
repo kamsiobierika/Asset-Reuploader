@@ -173,18 +173,20 @@ func Reupload(ctx *context.Context, r *request.Request) {
 					switch err {
 					case publish.UploadAudioErrors.ErrNotAuthenticated:
 						clientutils.GetNewCookie(ctx, r, "cookie expired")
+						return 0, &retry.ContinueRetry{Err: err}
 					case publish.UploadAudioErrors.ErrQuotaExceeded:
-						clientutils.GetNewCookie(ctx, r, "audio limit exceeded")
+						// Don't retry on quota exceeded - skip this asset and continue
+						return 0, &retry.ExitRetry{Err: err}
 					case publish.UploadAudioErrors.ErrModerated:
 						assetInfo.Name = fmt.Sprintf("(%s) [Censored]", assetInfo.Name)
+						return 0, &retry.ContinueRetry{Err: err}
 					default:
 						switch err.(type) {
 						case *net.OpError, *net.DNSError:
 							uploadQueue.Limiter.Decrement()
 						}
+						return 0, &retry.ContinueRetry{Err: err}
 					}
-
-					return 0, &retry.ContinueRetry{Err: err}
 				},
 			)
 		})
