@@ -31,7 +31,7 @@ func NewReuploadHandlerWithType(assetType string, c *roblox.Client, r *request.R
 	}
 
 	return func() error {
-		ctx := context.New(c, resp)
+		ctx := context.NewWithDebug(c, resp, assetType)
 
 		console.ClearScreen()
 
@@ -50,6 +50,12 @@ func NewReuploadHandlerWithType(assetType string, c *roblox.Client, r *request.R
 		}
 
 		reupload(ctx, req)
+
+		// Save debug file if debug writer is available
+		if ctx.DebugWriter != nil {
+			ctx.DebugWriter.SaveToFile()
+		}
+
 		return nil
 	}, nil
 }
