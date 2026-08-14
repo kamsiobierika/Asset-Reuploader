@@ -10,6 +10,7 @@ local tabOrder = {
     "Animation",
     "Sound",
     "Mesh",
+    "Image",
     "Replace",
     "Filter",
     "Themes",

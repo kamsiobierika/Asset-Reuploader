@@ -22,6 +22,14 @@ func getOutputFileName(reuploadType string) string {
 	return fmt.Sprintf("Output_%s_%s.json", reuploadType, t.Format("2006-01-02_15-04-05"))
 }
 
+func shouldEmitResults(responseLen int, busy bool, finished bool) bool {
+	return responseLen > 0 && !busy && !finished
+}
+
+func shouldEmitDone(responseLen int, busy bool, finished bool) bool {
+	return responseLen == 0 && !busy && finished
+}
+
 func serve(c *roblox.Client) error {
 	var exportedJSONName string
 	var exportJSON bool
@@ -46,26 +54,25 @@ func serve(c *roblox.Client) error {
 
 	http.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		if resp.Len() == 0 && !busy {
-			if !finished {
-				finished = true
-				busy = false
-				exportJSON = false
 
-				resp.Clear()
-				respHistory = make([]response.ResponseItem, 0)
-
-				fmt.Fprint(w, "done")
-				fmt.Println("Finished reuploading. (you can rerun without restarting)")
+		if shouldEmitResults(resp.Len(), busy, finished) {
+			if err := resp.EncodeJSON(json.NewEncoder(w)); err != nil {
+				log.Fatal(err)
+				return
 			}
-
+			resp.Clear()
 			return
 		}
 
-		if err := resp.EncodeJSON(json.NewEncoder(w)); err != nil {
-			log.Fatal(err)
-		} else {
+		if shouldEmitDone(resp.Len(), busy, finished) {
+			finished = false
+			exportJSON = false
 			resp.Clear()
+			respHistory = make([]response.ResponseItem, 0)
+
+			fmt.Fprint(w, "done")
+			fmt.Println("Finished reuploading. (you can rerun without restarting)")
+			return
 		}
 	})
 
@@ -119,6 +126,7 @@ func serve(c *roblox.Client) error {
 			duration := time.Since(start)
 			fmt.Printf("Reuploading took %d hours, %d minutes, and %d seconds\n", int(duration.Hours()), int(duration.Minutes())%60, int(duration.Seconds())%60)
 			fmt.Println("Waiting for client to finish changing ids...")
+			finished = true
 		}()
 
 		w.WriteHeader(http.StatusOK)

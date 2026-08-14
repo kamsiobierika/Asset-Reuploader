@@ -82,7 +82,7 @@ function getGameInfo(): (boolean, number, number)
     return isGroup, creatorInfo.CreatorTargetId, placeId
 end
 
-return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.FilterOptions, assetType: "Animation" | "Sound" | "Mesh", placeArray: { number }?)
+return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.FilterOptions, assetType: "Animation" | "Sound" | "Mesh" | "Image", placeArray: { number }?)
     if busy then
         ui:Notify("Notification", "Plugin is busy.")
         return 
@@ -120,20 +120,27 @@ return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.F
         return
     end
 
+    local replacements = 0
     local function onDataRecieved(data: string)
         local success, result = pcall(HttpService.JSONDecode, HttpService, data)
         if not success then
             if data ~= "done" then return end
-            
-            ui:Notify("Notification", "Finished reuploading all ids.")
+
+            if replacements == 0 then
+                ui:Notify("Notification", "No ids were reuploaded.")
+            else
+                ui:Notify("Notification", `Finished reuploading {replacements} ids.`)
+            end
             busy = false
             connection:Destroy()
             return
         end
 
-        if #(result :: any) == 0 then return end
-        AssetIdFilter.replaceIds(filteredIds, result :: any)
-        warn(`Replaced {#(result :: any)} ids`)
+        local replacementList = result :: any
+        if #(replacementList) == 0 then return end
+        replacements += #(replacementList)
+        AssetIdFilter.replaceIds(filteredIds, replacementList)
+        warn(`Replaced {#(replacementList)} ids`)
     end
 
     connection.onDataRecieved = onDataRecieved

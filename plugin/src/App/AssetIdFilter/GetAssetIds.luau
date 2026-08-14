@@ -84,6 +84,16 @@ local function getSpecialMesh(specialMesh: SpecialMesh): { [number]: { Instance 
 	return getId(specialMesh, pickBestValidAssetId(s))
 end
 
+local function getDecalTexture(instance: Decal | Texture): { [number]: { Instance } }
+	local s = tostring((instance :: any).Texture)
+	return getId(instance, pickBestValidAssetId(s))
+end
+
+local function getImageObject(instance: ImageLabel | ImageButton): { [number]: { Instance } }
+	local s = tostring((instance :: any).Image)
+	return getId(instance, pickBestValidAssetId(s))
+end
+
 local instanceIdGetters: { [string]: (instance: any) -> { [number]: { Instance } } } = {
     Animation = getAnimationId,
     Sound = getSoundId,
@@ -93,6 +103,10 @@ local instanceIdGetters: { [string]: (instance: any) -> { [number]: { Instance }
     StringValue = getStringValueIds,
 
     CharacterMesh = getCharacterMesh,
+    Decal = getDecalTexture,
+    Texture = getDecalTexture,
+    ImageButton = getImageObject,
+    ImageLabel = getImageObject,
     MeshPart = getMeshPart,
     SpecialMesh = getSpecialMesh,
 }

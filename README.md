@@ -27,6 +27,7 @@ Join the [discord](https://discord.gg/XTEtUqPTat) and interact with the communit
 
 - Animations
 - Audio (paid, join discord)
+- Images
 - Meshes (paid)
 
 ## Contributing

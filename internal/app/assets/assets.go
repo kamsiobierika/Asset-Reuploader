@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kartFr/Asset-Reuploader/internal/app/assets/animation"
+	"github.com/kartFr/Asset-Reuploader/internal/app/assets/image"
 	"github.com/kartFr/Asset-Reuploader/internal/app/assets/mesh"
 	"github.com/kartFr/Asset-Reuploader/internal/app/assets/shared/clientutils"
 	"github.com/kartFr/Asset-Reuploader/internal/app/assets/shared/permissions"
@@ -18,6 +19,7 @@ import (
 
 var assetModules = map[string]func(ctx *context.Context, r *request.Request){
 	"Animation": animation.Reupload,
+	"Image":     image.Reupload,
 	"Mesh":      mesh.Reupload,
 	"Sound":     sound.Reupload,
 }

@@ -141,6 +141,14 @@ local function setSpecialMesh(specialMesh: SpecialMesh, oldId: number, newId: nu
     specialMesh.MeshId = replaceFullNumberToken(specialMesh.MeshId, oldId, newId)
 end
 
+local function setDecalTexture(instance: Decal | Texture, oldId: number, newId: number)
+    instance.Texture = replaceFullNumberToken(instance.Texture, oldId, newId)
+end
+
+local function setImageObject(instance: ImageLabel | ImageButton, oldId: number, newId: number)
+    instance.Image = replaceFullNumberToken(instance.Image, oldId, newId)
+end
+
 local instanceIdSetters = {
     Animation = setAnimationId,
     Sound = setSoundId,
@@ -150,6 +158,10 @@ local instanceIdSetters = {
     StringValue = setStringValueIds,
 
     CharacterMesh = setCharacterMesh,
+    Decal = setDecalTexture,
+    Texture = setDecalTexture,
+    ImageButton = setImageObject,
+    ImageLabel = setImageObject,
     MeshPart = setMeshPart,
     SpecialMesh = setSpecialMesh,
 }
