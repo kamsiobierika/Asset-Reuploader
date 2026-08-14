@@ -4,6 +4,7 @@ local Connection = require("./Connection")
 local retry = require("./Retry")
 local StatusCodes = require("./StatusCodes")
 local UiLibrary = require("../UiLibrary")
+local UploadedIdCache = require("./UploadedIdCache")
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local ScriptEditorService = game:GetService("ScriptEditorService")
@@ -121,6 +122,8 @@ return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.F
     end
 
     local replacements = 0
+    local newlyUploadedIds: { number } = {}
+    
     local function onDataRecieved(data: string)
         local success, result = pcall(HttpService.JSONDecode, HttpService, data)
         if not success then
@@ -130,6 +133,10 @@ return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.F
                 ui:Notify("Notification", "No ids were reuploaded.")
             else
                 ui:Notify("Notification", `Finished reuploading {replacements} ids.`)
+                -- Save newly uploaded IDs to cache
+                if #newlyUploadedIds > 0 then
+                    UploadedIdCache.save(assetType, newlyUploadedIds)
+                end
             end
             busy = false
             connection:Destroy()
@@ -140,6 +147,12 @@ return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.F
         if #(replacementList) == 0 then return end
         replacements += #(replacementList)
         AssetIdFilter.replaceIds(filteredIds, replacementList)
+        
+        -- Track newly uploaded IDs
+        for _, pair in replacementList do
+            table.insert(newlyUploadedIds, pair.oldId)
+        end
+        
         warn(`Replaced {#(replacementList)} ids`)
     end
 
@@ -150,12 +163,26 @@ return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.F
     end
 
     local idArray = AssetIdFilter.getIdArray(filteredIds)
+    
+    -- Filter out already-uploaded IDs
+    local newIds = UploadedIdCache.filterNewIds(assetType, idArray)
+    
+    if #newIds == 0 then
+        ui:Notify("Notification", "All ids have already been reuploaded.")
+        busy = false
+        return
+    end
+    
+    if #newIds < #idArray then
+        ui:Notify("Notification", `{#idArray - #newIds} ids already reuploaded. Processing {#newIds} new ids.`)
+    end
+    
     local request: Request = {
         pluginVersion = currentVersion,
         creatorId = creatorId,
         isGroup = isGroup,
         assetType = assetType,
-        ids = idArray,
+        ids = newIds,
         placeId = placeId,
         defaultPlaceIds = placeArray or {},
         exportJson = plugin:GetSetting("ExportJSON")
@@ -171,7 +198,7 @@ return function(plugin: Plugin, ui: UiLibrary.Ui, filterOptions: AssetIdFilter.F
         return
     end
 
-    ui:Notify("Notification", `Sent {#idArray} ids to localhost.`)
+    ui:Notify("Notification", `Sent {#newIds} ids to localhost.`)
 
     if response then
         onDataRecieved(response)
